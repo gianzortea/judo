@@ -1,0 +1,14 @@
+{
+  "name": "Judo",
+  "short_name": "Judo",
+  "description": "Caderno de tecnicas de judo: clipes em loop, notas no tempo, encadeamentos e planos de treino",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#fbfbfd",
+  "theme_color": "#fbfbfd",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

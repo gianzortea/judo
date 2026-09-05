@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="theme-color" content="#fbfbfd">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Judo</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="stylesheet" href="css/style.css?v=1">
+</head>
+<body>
+
+<div id="app"></div>
+
+<!-- inputs escondidos -->
+<input type="file" id="fileVideo" accept="video/*" hidden>
+<input type="file" id="fileJson"  accept="application/json,.json,.zip" hidden>
+
+<!-- container de modais / toasts -->
+<div id="modal-root"></div>
+<div id="toast"></div>
+
+<script src="js/catalogo.js?v=1"></script>
+<script src="js/store.js?v=1"></script>
+<script src="js/zip.js?v=1"></script>
+<script src="js/player.js?v=1"></script>
+<script src="js/tecnica.js?v=1"></script>
+<script src="js/planos.js?v=1"></script>
+<script src="js/app.js?v=1"></script>
+</body>
+</html>

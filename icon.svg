@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#14171f"/>
+  <!-- faixa preta atravessando o judogi -->
+  <path d="M64 300 L448 224" stroke="#fbfbfd" stroke-width="46" stroke-linecap="round"/>
+  <path d="M64 300 L448 224" stroke="#1f6feb" stroke-width="18" stroke-linecap="round"/>
+  <!-- no da faixa -->
+  <rect x="214" y="228" width="84" height="60" rx="16" fill="#fbfbfd" transform="rotate(-11 256 258)"/>
+  <!-- pontas -->
+  <path d="M244 292 L214 400" stroke="#fbfbfd" stroke-width="26" stroke-linecap="round"/>
+  <path d="M286 288 L318 392" stroke="#fbfbfd" stroke-width="26" stroke-linecap="round"/>
+</svg>
