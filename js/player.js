@@ -157,6 +157,37 @@ const Player = {
 
       let raf = 0, vivo = true;
 
+      /* Seek pra trás é caro: o decodificador precisa voltar ao keyframe
+         anterior e decodificar até o ponto pedido. Num arquivo de celular
+         isso leva centenas de ms. Se outro seek chega antes, o navegador
+         ABORTA o que estava fazendo — e com toques rápidos ele aborta
+         sempre, nunca termina um decode e não pinta quadro nenhum: a tela
+         fica preta. Então vai um seek de cada vez, e o último pedido
+         espera a vez dele. Nenhum toque se perde: a conta é feita na
+         posição lógica, não na do elemento. */
+      let posLogica = null;   // onde o usuário está, mesmo com seek em voo
+      let pendente = null;    // seek pedido enquanto outro corria
+
+      const buscar = (t) => {
+        const dur = (isFinite(v.duration) && v.duration > 0) ? v.duration : Infinity;
+        t = Math.max(0, Math.min(dur, t));
+        posLogica = t;
+        if(v.seeking){ pendente = t; return; }
+        pendente = null;
+        v.currentTime = t;
+      };
+
+      const escoar = () => {
+        if(pendente === null || v.seeking) return;
+        const t = pendente; pendente = null;
+        v.currentTime = t;
+      };
+
+      v.addEventListener('seeked', () => {
+        if(pendente !== null) escoar();
+        else posLogica = null;          // elemento e usuário de novo juntos
+      });
+
       /* Se o usuário mandou tocar. Parado é ele navegando o clipe na mão
          (quadro a quadro, arrastando a barra), e aí o loop tem que ficar
          quieto: senão o passo pro quadro seguinte cruza o fim do recorte,
@@ -168,6 +199,7 @@ const Player = {
          vem a cada ~250 ms e precisa de folga pra não passar do ponto. */
       const conferir = (margem) => {
         if(!vivo) return;
+        escoar();   // rede de segurança, caso um 'seeked' se perca
         const fim = clipe.out > 0 ? clipe.out : (v.duration || 0);
         /* v.seeking: não empilha um seek em cima de outro que ainda não
            terminou — é o que fazia o vídeo engasgar no passo rápido */
@@ -211,17 +243,22 @@ const Player = {
         pause(){ querTocar = false; v.pause(); },
         alterna(){ v.paused ? this.play() : this.pause(); },
         tocando(){ return !v.paused; },
-        tempo(){ return v.currentTime || 0; },
+        /* durante um seek o elemento ainda mostra o tempo antigo; quem
+           vale é onde o usuário pediu pra estar */
+        tempo(){ return (posLogica !== null) ? posLogica : (v.currentTime || 0); },
         duracao(){ return v.duration || 0; },
-        seek(t){ v.currentTime = Math.max(0, t); },
+        seek(t){ buscar(t); },
         /* passo de quadro: 1/30 s é o suficiente pra ver o kuzushi.
            Anda livre pelo vídeo inteiro, inclusive fora do recorte — é
            assim que dá pra esticar o [ ou o ] pra além de onde estão. */
         passo(d){
           querTocar = false;
           v.pause();
-          const dur = (isFinite(v.duration) && v.duration > 0) ? v.duration : Infinity;
-          v.currentTime = Math.max(0, Math.min(dur, v.currentTime + d * (1 / 30)));
+          /* conta a partir de onde o usuário pediu pra estar, não de onde
+             o elemento ainda está: senão, com seek em voo, os toques
+             rápidos se anulam e o vídeo parece não sair do lugar */
+          const base = (posLogica !== null) ? posLogica : v.currentTime;
+          buscar(base + d * (1 / 30));
         },
         setRate(r){ v.playbackRate = r; },
         setEspelho(on){ aplicaEspelho(v, on); },
