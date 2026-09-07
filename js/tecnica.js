@@ -77,10 +77,24 @@ async function telaTecnica(id){
 
   function pintarAbas(){
     abas.innerHTML = '';
+
+    /* dois recortes do mesmo vídeo herdariam o mesmo nome; nesse caso
+       numera, senão as abas ficam indistinguíveis */
+    const nomes = (tec.clipes || []).map((c, i) => {
+      const vid = c.tipo === 'file' ? Store.getVideo(c.videoId) : null;
+      return c.rotulo || (c.tipo === 'yt' ? 'YouTube' : (vid && vid.nome) || 'Clipe ' + (i + 1));
+    });
+    const repetidos = {};
+    nomes.forEach(n => { repetidos[n] = (repetidos[n] || 0) + 1; });
+    const vistos = {};
+
     (tec.clipes || []).forEach((c, i) => {
       const falta = c.tipo === 'file' && !ARQUIVOS.has(c.videoId || c.id);
-      const vid = c.tipo === 'file' ? Store.getVideo(c.videoId) : null;
-      const nome = c.rotulo || (c.tipo === 'yt' ? 'YouTube' : (vid && vid.nome) || 'Clipe ' + (i + 1));
+      let nome = nomes[i];
+      if(repetidos[nome] > 1){
+        vistos[nome] = (vistos[nome] || 0) + 1;
+        nome = nome + ' ' + vistos[nome];
+      }
       const b = el('<button class="chip ' + (i === iClipe ? 'on' : '') + '">' +
         (falta ? '⚠ ' : c.tipo === 'yt' ? '▶ ' : '') + esc(nome) + '</button>');
       b.onclick = () => { if(i === iClipe) menuClipe(); else trocarClipe(i); };

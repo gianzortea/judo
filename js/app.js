@@ -48,7 +48,30 @@ function sheet(cfg){
   });
   if(cfg.corpo) sh.appendChild(cfg.corpo);
 
-  function fechar(){ ov.remove(); }
+  /* O teclado do celular cobre a parte de baixo da tela, que é justamente
+     onde a folha fica. Sem isto o campo e os botões somem embaixo dele: o
+     usuário digita às cegas, toca fora pra sair e a folha fecha em silêncio.
+     visualViewport diz a área que sobrou; a folha se encaixa nela. */
+  const vv = window.visualViewport;
+  function encaixar(){
+    if(!vv) return;
+    ov.style.top = vv.offsetTop + 'px';
+    ov.style.height = vv.height + 'px';
+    ov.style.bottom = 'auto';
+  }
+  if(vv){
+    encaixar();
+    vv.addEventListener('resize', encaixar);
+    vv.addEventListener('scroll', encaixar);
+  }
+
+  function fechar(){
+    if(vv){
+      vv.removeEventListener('resize', encaixar);
+      vv.removeEventListener('scroll', encaixar);
+    }
+    ov.remove();
+  }
   ov.onclick = e => { if(e.target === ov) fechar(); };
   root.appendChild(ov);
   return { fechar, sh };
@@ -93,7 +116,12 @@ function pedirTexto(cfg){
     ok.onclick = () => { s.fechar(); res(inp.value.trim()); };
     no.onclick = () => { s.fechar(); res(null); };
     if(!cfg.multi) inp.onkeydown = e => { if(e.key === 'Enter'){ s.fechar(); res(inp.value.trim()); } };
-    setTimeout(() => inp.focus(), 90);
+    setTimeout(() => {
+      inp.focus();
+      /* o teclado só sobe depois do foco; aí a folha reencaixa e o campo
+         precisa ser trazido de volta pra vista */
+      setTimeout(() => { try{ inp.scrollIntoView({ block: 'center' }); }catch(e){} }, 320);
+    }, 90);
   });
 }
 

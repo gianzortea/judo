@@ -178,7 +178,18 @@ const Player = {
     }
 
     return await new Promise((resolve) => {
-      let timer = 0, p = null, tocando = false;
+      let timer = 0, p = null, tocando = false, resolvido = false;
+      const entregar = (v) => { if(!resolvido){ resolvido = true; resolve(v); } };
+
+      /* se o onReady nunca vier (rede caindo, embed bloqueado), a montagem
+         ficaria pendurada pra sempre e a tela travava calada */
+      setTimeout(() => {
+        if(resolvido) return;
+        box.innerHTML = '<div class="vfalta">O YouTube não respondeu.' +
+                        '<br><small>Verifique a conexão e tente de novo.</small></div>';
+        if(cb.onErro) cb.onErro('YouTube não respondeu');
+        entregar(null);
+      }, 12000);
 
       p = new YT_.Player(alvo.id, {
         videoId: clipe.ytId,
@@ -201,7 +212,7 @@ const Player = {
               if(cb.onTempo) cb.onTempo(t);
             }, 60);
 
-            resolve(api);
+            entregar(api);
           },
           onStateChange(e){
             const novo = (e.data === YT_.PlayerState.PLAYING);
