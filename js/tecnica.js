@@ -454,7 +454,8 @@ async function telaTecnica(id){
         pintarScrub();
       },
       onTocando: () => { btPlay.textContent = (player && player.tocando()) ? '❚❚' : '▶'; },
-      onErro: () => {}
+      onErro: () => {},
+      onTentarDeNovo: () => montarClipe()
     });
     pintarScrub(); pintarNotas();
   }

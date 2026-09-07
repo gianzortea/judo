@@ -1,19 +1,19 @@
 /* Service worker — stale-while-revalidate.
    Abre instantâneo do cache (funciona offline) e atualiza em segundo plano. */
-const CACHE = 'judo-v5';
+const CACHE = 'judo-v6';
 const ASSETS = [
   './',
   './index.html',
   './manifest.json',
   './icon.svg',
-  './css/style.css?v=5',
-  './js/catalogo.js?v=5',
-  './js/store.js?v=5',
-  './js/zip.js?v=5',
-  './js/player.js?v=5',
-  './js/tecnica.js?v=5',
-  './js/planos.js?v=5',
-  './js/app.js?v=5'
+  './css/style.css?v=6',
+  './js/catalogo.js?v=6',
+  './js/store.js?v=6',
+  './js/zip.js?v=6',
+  './js/player.js?v=6',
+  './js/tecnica.js?v=6',
+  './js/planos.js?v=6',
+  './js/app.js?v=6'
 ];
 
 self.addEventListener('install', (e) => {

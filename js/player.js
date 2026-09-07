@@ -34,16 +34,51 @@ function parseYouTube(url){
 let ytPronto = null;
 function carregarYT(){
   if(ytPronto) return ytPronto;
+
   ytPronto = new Promise((res, rej) => {
     if(window.YT && window.YT.Player) return res(window.YT);
+
+    let fechado = false, prazo = 0;
+
+    const ok = () => {
+      if(fechado) return;
+      fechado = true; clearTimeout(prazo);
+      res(window.YT);
+    };
+
+    const falhou = (msg) => {
+      if(fechado) return;
+      fechado = true; clearTimeout(prazo);
+      /* NÃO guarda a falha. Guardar a promessa rejeitada envenenava a
+         sessão inteira: um sinal ruim de agora condenava todo clipe do
+         YouTube até o app ser fechado e reaberto, mesmo com a rede boa
+         de volta. A próxima tentativa recomeça do zero. */
+      ytPronto = null;
+      const velho = document.getElementById('yt-api');
+      if(velho) velho.remove();
+      rej(new Error(msg));
+    };
+
     const antigo = window.onYouTubeIframeAPIReady;
-    window.onYouTubeIframeAPIReady = () => { if(antigo) antigo(); res(window.YT); };
-    const s = document.createElement('script');
-    s.src = 'https://www.youtube.com/iframe_api';
-    s.onerror = () => rej(new Error('sem internet'));
-    document.head.appendChild(s);
-    setTimeout(() => rej(new Error('YouTube demorou demais')), 12000);
+    window.onYouTubeIframeAPIReady = () => { if(antigo) antigo(); ok(); };
+
+    /* o script pode ter ficado de uma tentativa anterior */
+    if(!document.getElementById('yt-api')){
+      const s = document.createElement('script');
+      s.id = 'yt-api';
+      s.src = 'https://www.youtube.com/iframe_api';
+      s.onerror = () => falhou('não consegui carregar o YouTube');
+      document.head.appendChild(s);
+    }
+
+    /* 4G ruim de dojo demora. 20 s antes de desistir — e desistir aqui
+       não é definitivo. */
+    prazo = setTimeout(() => {
+      if(window.YT && window.YT.Player) return ok();
+      falhou('o YouTube demorou demais');
+    }, 20000);
   });
+
   return ytPronto;
 }
 
@@ -83,12 +118,30 @@ const Player = {
       el.style.transform = on ? 'scaleX(-1)' : '';
     };
 
+    /* toda falha aqui é recuperável: mostra o motivo e oferece a saída,
+       em vez de deixar uma caixa preta muda na tela */
+    const falha = (titulo, detalhe) => {
+      box.innerHTML = '';
+      const d = document.createElement('div');
+      d.className = 'vfalta';
+      d.innerHTML = titulo + (detalhe ? '<br><small>' + detalhe + '</small>' : '');
+      if(cb.onTentarDeNovo){
+        const b = document.createElement('button');
+        b.className = 'btn sm';
+        b.style.cssText = 'margin:14px auto 0;max-width:190px;display:flex';
+        b.textContent = 'Tentar de novo';
+        b.onclick = () => cb.onTentarDeNovo();
+        d.appendChild(b);
+      }
+      box.appendChild(d);
+    };
+
     /* ---------------- arquivo local ---------------- */
     if(clipe.tipo === 'file'){
       const blob = await Video_DB.get(clipe.videoId || clipe.id);
       if(!blob){
-        box.innerHTML = '<div class="vfalta">O vídeo deste clipe não está neste aparelho.' +
-                        '<br><small>Importe um backup .zip ou escolha outro vídeo.</small></div>';
+        falha('O vídeo deste clipe não está neste aparelho.',
+              'Importe um backup .zip ou escolha outro vídeo.');
         if(cb.onErro) cb.onErro('sem arquivo');
         return null;
       }
@@ -193,8 +246,8 @@ const Player = {
     let YT_;
     try { YT_ = await carregarYT(); }
     catch(e){
-      box.innerHTML = '<div class="vfalta">Este clipe é do YouTube e precisa de internet.' +
-                      '<br><small>Sem conexão agora.</small></div>';
+      falha('Não consegui falar com o YouTube.',
+            'Este clipe precisa de internet. Confira a conexão e tente de novo.');
       if(cb.onErro) cb.onErro('sem internet');
       return null;
     }
@@ -210,11 +263,10 @@ const Player = {
          ficaria pendurada pra sempre e a tela travava calada */
       setTimeout(() => {
         if(resolvido) return;
-        box.innerHTML = '<div class="vfalta">O YouTube não respondeu.' +
-                        '<br><small>Verifique a conexão e tente de novo.</small></div>';
+        falha('O YouTube não respondeu.', 'Confira a conexão e tente de novo.');
         if(cb.onErro) cb.onErro('YouTube não respondeu');
         entregar(null);
-      }, 12000);
+      }, 20000);
 
       p = new YT_.Player(alvo.id, {
         videoId: clipe.ytId,
