@@ -583,7 +583,35 @@ function telaVideos(){
 }
 
 function menuVideo(v, usos){
+  const falta = !ARQUIVOS.has(v.id);
+
   const ops = [
+    /* reanexa o arquivo a uma ficha que ficou sem ele — depois de um
+       backup .json (que não leva vídeo), de uma limpeza do navegador, ou
+       de o sistema ter descartado o armazenamento. Os clipes continuam
+       apontando pra este id, então os recortes e as notas ficam de pé. */
+    { i: falta ? '📎' : '🔄', txt: falta ? 'Anexar o arquivo' : 'Substituir o arquivo',
+      sub: usos.length
+        ? 'mantém os recortes e as notas dos ' + usos.length + (usos.length === 1 ? ' clipe' : ' clipes')
+        : 'escolher o arquivo deste vídeo',
+      fn: () => {
+        aoEscolherVideo = async (file) => {
+          try{
+            await Video_DB.put(v.id, file);
+            ARQUIVOS.add(v.id);
+          }catch(e){
+            return sheet({ titulo: 'Não consegui guardar',
+              sub: 'O armazenamento do navegador recusou o arquivo (' + humanSize(file.size) + ').',
+              opcoes: [{ i: '✓', txt: 'Entendi' }] });
+          }
+          v.size = file.size;
+          v.mime = file.type;
+          Store.upsertVideo(v);
+          toast('Arquivo anexado — ' + usos.length + (usos.length === 1 ? ' clipe voltou' : ' clipes voltaram'));
+          render();
+        };
+        document.getElementById('fileVideo').click();
+      } },
     { i: '🏷', txt: 'Renomear', sub: v.nome || 'sem nome', fn: async () => {
         const n = await pedirTexto({ titulo: 'Nome do vídeo', valor: v.nome,
           sub: 'Vale pra todas as técnicas que usam este arquivo.', placeholder: 'Aula 12/03' });
