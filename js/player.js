@@ -104,13 +104,21 @@ const Player = {
 
       let raf = 0, vivo = true;
 
+      /* Se o usuário mandou tocar. Parado é ele navegando o clipe na mão
+         (quadro a quadro, arrastando a barra), e aí o loop tem que ficar
+         quieto: senão o passo pro quadro seguinte cruza o fim do recorte,
+         é puxado de volta pro início e o vídeo nunca passa dali. */
+      let querTocar = false;
+
       /* fecha o loop e avisa o tempo. A margem é proporcional à
          granularidade de quem chamou: o rAF acerta fino, o timeupdate
          vem a cada ~250 ms e precisa de folga pra não passar do ponto. */
       const conferir = (margem) => {
         if(!vivo) return;
         const fim = clipe.out > 0 ? clipe.out : (v.duration || 0);
-        if(fim > 0 && v.currentTime >= fim - margem){
+        /* v.seeking: não empilha um seek em cima de outro que ainda não
+           terminou — é o que fazia o vídeo engasgar no passo rápido */
+        if(querTocar && !v.seeking && fim > 0 && v.currentTime >= fim - margem){
           v.currentTime = clipe.in || 0;
           if(v.paused) v.play().catch(() => {});
         }
@@ -139,15 +147,29 @@ const Player = {
       return {
         tipo: 'file',
         el: v,
-        play(){ v.play().catch(() => {}); },
-        pause(){ v.pause(); },
+        play(){
+          querTocar = true;
+          /* voltou pro início se estava parado no fim do recorte, senão
+             o play não teria pra onde ir */
+          const fim = clipe.out > 0 ? clipe.out : (v.duration || 0);
+          if(fim > 0 && v.currentTime >= fim - 0.05) v.currentTime = clipe.in || 0;
+          v.play().catch(() => {});
+        },
+        pause(){ querTocar = false; v.pause(); },
         alterna(){ v.paused ? this.play() : this.pause(); },
         tocando(){ return !v.paused; },
         tempo(){ return v.currentTime || 0; },
         duracao(){ return v.duration || 0; },
         seek(t){ v.currentTime = Math.max(0, t); },
-        /* passo de quadro: 1/30 s é o suficiente pra ver o kuzushi */
-        passo(d){ v.pause(); v.currentTime = Math.max(0, Math.min(v.duration || 0, v.currentTime + d * (1 / 30))); },
+        /* passo de quadro: 1/30 s é o suficiente pra ver o kuzushi.
+           Anda livre pelo vídeo inteiro, inclusive fora do recorte — é
+           assim que dá pra esticar o [ ou o ] pra além de onde estão. */
+        passo(d){
+          querTocar = false;
+          v.pause();
+          const dur = (isFinite(v.duration) && v.duration > 0) ? v.duration : Infinity;
+          v.currentTime = Math.max(0, Math.min(dur, v.currentTime + d * (1 / 30)));
+        },
         setRate(r){ v.playbackRate = r; },
         setEspelho(on){ aplicaEspelho(v, on); },
         destruir(){
@@ -179,6 +201,9 @@ const Player = {
 
     return await new Promise((resolve) => {
       let timer = 0, p = null, tocando = false, resolvido = false;
+      /* mesma regra do vídeo local: parado é o usuário navegando na mão,
+         e aí o loop não pode puxar ele de volta pro início */
+      let querTocar = false;
       const entregar = (v) => { if(!resolvido){ resolvido = true; resolve(v); } };
 
       /* se o onReady nunca vier (rede caindo, embed bloqueado), a montagem
@@ -208,7 +233,7 @@ const Player = {
               let t = 0;
               try{ t = p.getCurrentTime() || 0; }catch(e){ return; }
               const fim = clipe.out > 0 ? clipe.out : (p.getDuration ? p.getDuration() : 0);
-              if(fim > 0 && t >= fim - 0.08){ try{ p.seekTo(clipe.in || 0, true); }catch(e){} }
+              if(querTocar && fim > 0 && t >= fim - 0.08){ try{ p.seekTo(clipe.in || 0, true); }catch(e){} }
               if(cb.onTempo) cb.onTempo(t);
             }, 60);
 
@@ -229,15 +254,22 @@ const Player = {
       const api = {
         tipo: 'yt',
         el: wrap,
-        play(){ try{ p.playVideo(); }catch(e){} },
-        pause(){ try{ p.pauseVideo(); }catch(e){} },
+        play(){
+          querTocar = true;
+          try{
+            const fim = clipe.out > 0 ? clipe.out : p.getDuration();
+            if(fim > 0 && this.tempo() >= fim - 0.1) p.seekTo(clipe.in || 0, true);
+            p.playVideo();
+          }catch(e){}
+        },
+        pause(){ querTocar = false; try{ p.pauseVideo(); }catch(e){} },
         alterna(){ tocando ? this.pause() : this.play(); },
         tocando(){ return tocando; },
         tempo(){ try{ return p.getCurrentTime() || 0; }catch(e){ return 0; } },
         duracao(){ try{ return p.getDuration() || 0; }catch(e){ return 0; } },
         seek(t){ try{ p.seekTo(Math.max(0, t), true); }catch(e){} },
         /* o YouTube não entrega quadro a quadro de verdade; 0,1 s é o mais fino que ele aceita */
-        passo(d){ try{ p.pauseVideo(); p.seekTo(Math.max(0, this.tempo() + d * 0.1), true); }catch(e){} },
+        passo(d){ querTocar = false; try{ p.pauseVideo(); p.seekTo(Math.max(0, this.tempo() + d * 0.1), true); }catch(e){} },
         setRate(r){ try{ p.setPlaybackRate(r); }catch(e){} },
         setEspelho(on){ aplicaEspelho(wrap, on); },
         destruir(){
