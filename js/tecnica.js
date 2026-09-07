@@ -59,7 +59,6 @@ async function telaTecnica(id){
     titulo.querySelector('b').textContent = tec.nome || 'Sem nome';
     const sd = STATUS_POR_ID[tec.status] || STATUS[0];
     const bits = [sd.nome];
-    if(st.mostrarJp && tec.jp) bits.unshift(tec.jp);
     if(tec.lado && tec.lado !== 'ambos') bits.push(tec.lado);
     if(tec.pegada) bits.push((PEGADAS.find(p => p.id === tec.pegada) || {}).nome || '');
     titulo.querySelector('small').textContent = bits.filter(Boolean).join(' · ');
@@ -79,8 +78,9 @@ async function telaTecnica(id){
   function pintarAbas(){
     abas.innerHTML = '';
     (tec.clipes || []).forEach((c, i) => {
-      const falta = c.tipo === 'file' && !ARQUIVOS.has(c.id);
-      const nome = c.rotulo || (c.tipo === 'yt' ? 'YouTube' : 'Clipe ' + (i + 1));
+      const falta = c.tipo === 'file' && !ARQUIVOS.has(c.videoId || c.id);
+      const vid = c.tipo === 'file' ? Store.getVideo(c.videoId) : null;
+      const nome = c.rotulo || (c.tipo === 'yt' ? 'YouTube' : (vid && vid.nome) || 'Clipe ' + (i + 1));
       const b = el('<button class="chip ' + (i === iClipe ? 'on' : '') + '">' +
         (falta ? '⚠ ' : c.tipo === 'yt' ? '▶ ' : '') + esc(nome) + '</button>');
       b.onclick = () => { if(i === iClipe) menuClipe(); else trocarClipe(i); };
@@ -431,6 +431,12 @@ async function telaTecnica(id){
       onTempo: tick,
       onPronto: dur => {
         if(dur && !c.dur){ c.dur = dur; Store.upsertTecnica(tec); }
+        /* a duração é do arquivo, não do clipe: guarda na biblioteca também,
+           pra outra técnica que use o mesmo vídeo já saber sem abrir */
+        if(dur && c.tipo === 'file'){
+          const v = Store.getVideo(c.videoId);
+          if(v && !v.dur){ v.dur = dur; Store.upsertVideo(v); }
+        }
         pintarScrub();
       },
       onTocando: () => { btPlay.textContent = (player && player.tocando()) ? '❚❚' : '▶'; },
@@ -447,35 +453,110 @@ async function telaTecnica(id){
 
   /* ---------- clipes: adicionar e gerenciar ---------- */
   function menuAddClipe(){
+    const biblio = Store.videos();
+    const ops = [];
+
+    if(biblio.length){
+      ops.push({ i: '📚', txt: 'Escolher da biblioteca',
+        sub: biblio.length + (biblio.length === 1 ? ' vídeo já neste aparelho' : ' vídeos já neste aparelho'),
+        fn: escolherDaBiblioteca });
+    }
+    ops.push({ i: '⬆', txt: 'Subir um vídeo novo', sub: 'fica offline; ocupa espaço',
+      fn: () => { aoEscolherVideo = addArquivo; document.getElementById('fileVideo').click(); } });
+    ops.push({ i: '▶', txt: 'Trecho do YouTube', sub: 'não ocupa espaço; precisa de internet',
+      fn: addYouTube });
+
     sheet({
       titulo: 'Adicionar clipe',
       sub: 'Vários clipes na mesma técnica: ângulo de frente, de lado, competição, o seu treino.',
-      opcoes: [
-        { i: '📁', txt: 'Vídeo deste aparelho', sub: 'fica offline; ocupa espaço', fn: () => {
-            aoEscolherVideo = addArquivo;
-            document.getElementById('fileVideo').click();
-          } },
-        { i: '▶', txt: 'Trecho do YouTube', sub: 'não ocupa espaço; precisa de internet', fn: addYouTube }
-      ]
+      opcoes: ops
     });
   }
 
+  /* o ponto da biblioteca: uma aula inteira sobe uma vez e vira dez
+     técnicas, cada uma com o seu recorte, sem duplicar um byte */
+  function escolherDaBiblioteca(){
+    const biblio = Store.videos();
+    sheet({
+      titulo: 'Qual vídeo?',
+      sub: 'O mesmo arquivo pode servir várias técnicas, cada uma com o seu recorte. Nada é gravado de novo.',
+      opcoes: biblio.map(v => {
+        const usos = Store.usosDoVideo(v.id).length;
+        return {
+          i: '🎬', txt: v.nome || 'Vídeo',
+          sub: humanSize(v.size) + (v.dur ? ' · ' + mmss(v.dur) : '') +
+               ' · ' + (usos ? 'em ' + usos + (usos === 1 ? ' clipe' : ' clipes') : 'sem uso'),
+          fn: () => usarVideo(v)
+        };
+      })
+    });
+  }
+
+  function usarVideo(v){
+    const c = newClipe({ tipo: 'file', videoId: v.id, dur: v.dur, rate: Store.settings().rate });
+    tec.clipes = (tec.clipes || []).concat([c]);
+    Store.upsertTecnica(tec);
+    trocarClipe(tec.clipes.length - 1);
+    toast('Marque o trecho com os botões [ e ]');
+  }
+
   async function addArquivo(file){
-    const c = newClipe({
-      tipo: 'file', nome: file.name, size: file.size, mime: file.type,
-      rate: Store.settings().rate
+    const v = newVideo({
+      nome: file.name.replace(/\.\w+$/, ''),
+      size: file.size, mime: file.type
     });
     try{
-      await Video_DB.put(c.id, file);
-      ARQUIVOS.add(c.id);
+      await Video_DB.put(v.id, file);
+      ARQUIVOS.add(v.id);
     }catch(e){
       return sheet({ titulo: 'Não consegui guardar', sub: 'O armazenamento do navegador recusou o arquivo (' +
         humanSize(file.size) + '). Corte o vídeo antes de subir.', opcoes: [{ i: '✓', txt: 'Entendi' }] });
     }
+    Store.upsertVideo(v);
+
+    const c = newClipe({ tipo: 'file', videoId: v.id, rate: Store.settings().rate });
     tec.clipes = (tec.clipes || []).concat([c]);
     Store.upsertTecnica(tec);
-    toast('Clipe de ' + humanSize(file.size) + ' guardado');
+    toast('Vídeo de ' + humanSize(file.size) + ' guardado');
     trocarClipe(tec.clipes.length - 1);
+  }
+
+  /* mesmo arquivo, outro recorte, em outra técnica: é o caminho pra
+     quebrar um vídeo de aula longa em várias técnicas */
+  function usarEmOutraTecnica(){
+    const c = tec.clipes[iClipe];
+    if(!c || c.tipo !== 'file') return;
+    const t0 = player ? player.tempo() : 0;
+
+    const anexar = (alvoId, ir) => {
+      const alvo = Store.getTecnica(alvoId);
+      if(!alvo) return;
+      alvo.clipes = (alvo.clipes || []).concat([
+        newClipe({ tipo: 'file', videoId: c.videoId, dur: c.dur, in: t0, rate: Store.settings().rate })
+      ]);
+      Store.upsertTecnica(alvo);
+      toast('Clipe criado em ' + alvo.nome);
+      if(ir) go('/t/' + alvo.id);
+    };
+
+    const ops = Store.tecnicas().filter(t => t.id !== tec.id).map(o => ({
+      i: '🥋', txt: o.nome, sub: (STATUS_POR_ID[o.status] || STATUS[0]).nome,
+      fn: () => anexar(o.id, false)
+    }));
+    ops.push({ sep: true });
+    ops.push({ i: '+', txt: 'Criar uma técnica nova', fn: async () => {
+      const nome = await pedirTexto({ titulo: 'Nome da técnica', placeholder: 'Uchi-mata', ok: 'Criar' });
+      if(!nome) return;
+      const nova = newTecnica({ nome });
+      Store.upsertTecnica(nova);
+      anexar(nova.id, true);
+    } });
+
+    sheet({
+      titulo: 'Usar este vídeo em...',
+      sub: 'O mesmo arquivo, começando em ' + mmss(t0) + '. Não ocupa espaço a mais.',
+      opcoes: ops
+    });
   }
 
   async function addYouTube(){
@@ -505,32 +586,57 @@ async function telaTecnica(id){
       ? mmss(c.in || 0) + ' → ' + mmss(c.out > 0 ? c.out : dur)
       : 'clipe inteiro';
 
+    const vid = c.tipo === 'file' ? Store.getVideo(c.videoId) : null;
+    const usos = vid ? Store.usosDoVideo(vid.id).length : 0;
+    const origem = c.tipo === 'yt'
+      ? 'YouTube'
+      : vid
+        ? vid.nome + ' · ' + humanSize(vid.size) + (usos > 1 ? ' · usado em ' + usos + ' clipes' : '')
+        : 'vídeo que não está mais aqui';
+
+    const ops = [
+      { i: '🏷', txt: 'Renomear o clipe', sub: 'ex.: “de lado”, “competição”, “meu treino”', fn: async () => {
+          const n = await pedirTexto({ titulo: 'Nome do clipe', valor: c.rotulo, placeholder: 'de lado' });
+          if(n === null) return;
+          c.rotulo = n; Store.upsertTecnica(tec); pintarAbas();
+        } },
+      { i: '↺', txt: 'Limpar o recorte', sub: 'volta a rodar o vídeo inteiro', fn: () => {
+          c.in = 0; c.out = 0; Store.upsertTecnica(tec); pintarScrub();
+          if(player) player.seek(0);
+          toast('Recorte limpo');
+        } }
+    ];
+
+    if(c.tipo === 'file' && vid){
+      ops.push({ i: '📎', txt: 'Usar este vídeo em outra técnica',
+        sub: 'mesmo arquivo, outro recorte', fn: usarEmOutraTecnica });
+      ops.push({ i: '🎬', txt: 'Renomear o vídeo', sub: vid.nome, fn: async () => {
+          const n = await pedirTexto({ titulo: 'Nome do vídeo', valor: vid.nome,
+            sub: 'Vale pra todas as técnicas que usam este arquivo.', placeholder: 'Aula 12/03' });
+          if(!n) return;
+          vid.nome = n; Store.upsertVideo(vid); pintarAbas();
+        } });
+    }
+
+    ops.push({ sep: true });
+    ops.push({ i: '🗑', txt: 'Apagar este clipe', cls: 'danger', fn: async () => {
+        const ok = await confirmar('Apagar o clipe?',
+          'Vão junto as ' + ((c.notas || []).length) + ' notas dele. ' +
+          (usos > 1
+            ? 'O vídeo fica: outros ' + (usos - 1) + (usos - 1 === 1 ? ' clipe usa' : ' clipes usam') + ' ele.'
+            : 'O vídeo continua na biblioteca.'),
+          'Apagar');
+        if(!ok) return;
+        tec.clipes.splice(iClipe, 1);
+        Store.upsertTecnica(tec);
+        iClipe = Math.max(0, iClipe - 1);
+        pintarAbas(); montarClipe();
+      } });
+
     sheet({
-      titulo: c.rotulo || 'Clipe ' + (iClipe + 1),
-      sub: (c.tipo === 'yt' ? 'YouTube' : (c.nome || 'arquivo local') + ' · ' + humanSize(c.size)) + '\nLoop: ' + trecho,
-      opcoes: [
-        { i: '🏷', txt: 'Renomear', sub: 'ex.: “de lado”, “competição”, “meu treino”', fn: async () => {
-            const n = await pedirTexto({ titulo: 'Nome do clipe', valor: c.rotulo, placeholder: 'de lado' });
-            if(n === null) return;
-            c.rotulo = n; Store.upsertTecnica(tec); pintarAbas();
-          } },
-        { i: '↺', txt: 'Limpar o recorte', sub: 'volta a rodar o clipe inteiro', fn: () => {
-            c.in = 0; c.out = 0; Store.upsertTecnica(tec); pintarScrub();
-            if(player) player.seek(0);
-            toast('Recorte limpo');
-          } },
-        { sep: true },
-        { i: '🗑', txt: 'Apagar este clipe', cls: 'danger', fn: async () => {
-            const ok = await confirmar('Apagar o clipe?',
-              'O vídeo e as ' + ((c.notas || []).length) + ' notas dele vão junto.', 'Apagar');
-            if(!ok) return;
-            if(c.tipo === 'file'){ await Video_DB.del(c.id); ARQUIVOS.delete(c.id); }
-            tec.clipes.splice(iClipe, 1);
-            Store.upsertTecnica(tec);
-            iClipe = Math.max(0, iClipe - 1);
-            pintarAbas(); montarClipe();
-          } }
-      ]
+      titulo: c.rotulo || (vid && vid.nome) || 'Clipe ' + (iClipe + 1),
+      sub: origem + '\nLoop: ' + trecho,
+      opcoes: ops
     });
   }
 
@@ -606,7 +712,6 @@ function telaEditor(id){
   };
 
   const fNome = campo('Nome', tec.nome, 'Uchi-mata');
-  const fJp   = campo('Nome em japonês', tec.jp, '内股', 'Opcional. Só pra bater o olho e reconhecer.');
   const fTags = campo('Tags', (tec.tags || []).join(', '), 'competição, kenka-yotsu, favorita do sensei',
     'Separadas por vírgula. Aparecem na busca.');
 
@@ -640,14 +745,13 @@ function telaEditor(id){
     { id: 'ambos',    nome: 'Os dois' }
   ], 'Dá pra ver a versão do outro lado espelhando o clipe, sem gravar de novo.');
 
-  [fNome, fJp, fCat, fSub, fStatus, fPegada, fLado, fTags].forEach(f => wrap.appendChild(f));
+  [fNome, fCat, fSub, fStatus, fPegada, fLado, fTags].forEach(f => wrap.appendChild(f));
 
   const salvar = el('<button class="btn primary">' + (nova ? 'Criar técnica' : 'Salvar') + '</button>');
   salvar.onclick = () => {
     const nome = fNome.querySelector('input').value.trim();
     if(!nome){ toast('Falta o nome'); return; }
     tec.nome = nome;
-    tec.jp = fJp.querySelector('input').value.trim();
     tec.cat = fCat.querySelector('select').value;
     tec.sub = fSub.querySelector('select').value;
     tec.status = fStatus.querySelector('select').value;

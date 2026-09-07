@@ -8,7 +8,7 @@ const APP_VER = (() => {
   return m ? m[1] : '?';
 })();
 
-/* conjunto de ids de clipe que têm arquivo neste aparelho */
+/* ids da biblioteca cujo arquivo está mesmo gravado neste aparelho */
 let ARQUIVOS = new Set();
 
 /* ---------- utilidades de DOM ---------- */
@@ -215,6 +215,7 @@ async function render(){
     else if(p[0] === 'planos')        node = telaPlanos();
     else if(p[0] === 'plano')         node = telaPlano(p[1]);
     else if(p[0] === 'log')           node = telaLog();
+    else if(p[0] === 'videos')        node = telaVideos();
     else if(p[0] === 'ajustes')       node = telaAjustes();
     else if(p[0] === 'nova')          node = telaEditor(null);
     else if(p[0] === 't' && p[2] === 'edit') node = telaEditor(p[1]);
@@ -281,7 +282,7 @@ function telaLista(){
     if(filtroLista.status === 'fav'){ if(!t.favorita) return false; }
     else if(filtroLista.status && t.status !== filtroLista.status) return false;
     if(!q) return true;
-    const alvo = [t.nome, t.jp, t.obs, (t.tags || []).join(' '),
+    const alvo = [t.nome, t.obs, (t.tags || []).join(' '),
                   (t.pontos || []).join(' '), (t.erros || []).join(' '),
                   (t.clipes || []).map(c => (c.notas || []).map(n => n.txt).join(' ')).join(' ')
                  ].join(' ').toLowerCase();
@@ -345,7 +346,6 @@ function cardTecnica(t, st, stats){
   const nclip = (t.clipes || []).length;
   const nnota = (t.clipes || []).reduce((s, c) => s + (c.notas || []).length, 0);
   const info = [];
-  if(st.mostrarJp && t.jp) info.push(t.jp);
   if(nclip) info.push(nclip + (nclip === 1 ? ' clipe' : ' clipes'));
   if(nnota) info.push(nnota + (nnota === 1 ? ' nota' : ' notas'));
   if((t.links || []).length) info.push((t.links || []).length + ' ligações');
@@ -354,6 +354,8 @@ function cardTecnica(t, st, stats){
     const d = diasDesde(ult);
     info.push(d === 0 ? 'treinei hoje' : d === 1 ? 'treinei ontem' : 'há ' + d + ' dias');
   }
+
+  if(!info.length) info.push(sd.nome);   // sem clipe nem nota: ao menos diz onde está
 
   const c = el('<div class="card" data-id="' + t.id + '">' +
     (st.ordenar === 'manual' ? '<span class="grip" data-grip>≡</span>' : '') +
@@ -417,7 +419,7 @@ function telaCatalogo(){
   const vis = CATALOGO.filter(t => {
     if(!q && t.cat !== filtroCat.cat) return false;
     if(!q) return true;
-    const alvo = (t.nome + t.jp + t.trad + t.id).toLowerCase().replace(/[- ]/g, '');
+    const alvo = (t.nome + t.trad + t.id).toLowerCase().replace(/[- ]/g, '');
     return alvo.indexOf(q) >= 0;
   });
 
@@ -446,7 +448,6 @@ function telaCatalogo(){
       const jaId = usados[t.id];
       const sub = SUBS[t.sub] ? SUBS[t.sub].nome : '';
       const linha = el('<div class="catlin ' + (jaId ? 'ja' : '') + '">' +
-        (st.mostrarJp ? '<span class="jp">' + esc(t.jp) + '</span>' : '') +
         '<div class="info"><b>' + esc(t.nome) + '</b>' +
         '<small>' + esc(t.trad + (sub ? ' · ' + sub : '')) + '</small>' +
         (t.nota ? '<em>⚠ ' + esc(t.nota) + '</em>' : '') +
@@ -461,7 +462,7 @@ function telaCatalogo(){
       linha.onclick = () => {
         sheet({
           titulo: t.nome,
-          sub: t.jp + ' — ' + t.trad + (t.nota ? '\n⚠ ' + t.nota : ''),
+          sub: t.trad + (t.nota ? '\n⚠ ' + t.nota : ''),
           opcoes: [
             jaId
               ? { i: '🥋', txt: 'Abrir no meu judô', fn: () => go('/t/' + jaId) }
@@ -489,12 +490,113 @@ function telaCatalogo(){
 
 function adicionarDoCatalogo(t){
   const nova = newTecnica({
-    nome: t.nome, jp: t.jp, catalogoId: t.id,
+    nome: t.nome, catalogoId: t.id,
     cat: t.cat, sub: t.sub
   });
   Store.upsertTecnica(nova);
   toast(t.nome + ' entrou no seu judô');
   go('/t/' + nova.id);
+}
+
+/* =========================================================
+   TELA: biblioteca de vídeos
+   Um arquivo, vários clipes. Aqui você vê quem usa o quê e
+   o que está ocupando espaço à toa.
+   ========================================================= */
+function telaVideos(){
+  const vids = Store.videos();
+  const wrap = document.createElement('div');
+
+  if(!vids.length){
+    wrap.appendChild(el('<div class="empty"><h3>Nenhum vídeo ainda</h3>' +
+      '<p>Quando você subir um vídeo numa técnica, ele passa a morar aqui — e daí em diante ' +
+      'outras técnicas podem apontar pro mesmo arquivo, cada uma com o seu recorte.</p></div>'));
+    return casca('Biblioteca', '', [], wrap, null, () => go('/ajustes'));
+  }
+
+  const total = vids.reduce((s, v) => s + (v.size || 0), 0);
+
+  vids.forEach(v => {
+    const usos = Store.usosDoVideo(v.id);
+    const falta = !ARQUIVOS.has(v.id);
+    const info = [humanSize(v.size)];
+    if(v.dur) info.push(mmss(v.dur));
+    info.push(usos.length ? 'em ' + usos.length + (usos.length === 1 ? ' clipe' : ' clipes') : 'sem uso');
+
+    const c = el('<div class="card">' +
+      '<span class="dot" style="background:' + (falta ? 'var(--danger)' : usos.length ? 'var(--acc2)' : 'var(--fg3)') + '"></span>' +
+      '<div class="info"><b>' + esc(v.nome || 'Vídeo') + '</b>' +
+      '<small>' + esc(info.join(' · ')) + (falta ? ' · arquivo ausente' : '') + '</small></div>' +
+      '<span class="dir">›</span></div>');
+    c.onclick = () => menuVideo(v, usos);
+    wrap.appendChild(c);
+  });
+
+  const semUso = Store.videosSemUso();
+  if(semUso.length){
+    const bytes = semUso.reduce((s, v) => s + (v.size || 0), 0);
+    wrap.appendChild(el('<div style="height:10px"></div>'));
+    const b = el('<button class="btn danger">Apagar os ' + semUso.length +
+      ' sem uso · libera ' + humanSize(bytes) + '</button>');
+    b.onclick = async () => {
+      const ok = await confirmar('Apagar ' + semUso.length + (semUso.length === 1 ? ' vídeo?' : ' vídeos?'),
+        'Nenhuma técnica aponta pra eles. Libera ' + humanSize(bytes) + '. Não dá pra desfazer.', 'Apagar');
+      if(!ok) return;
+      for(const v of semUso){ await Store.deleteVideo(v.id); ARQUIVOS.delete(v.id); }
+      toast(humanSize(bytes) + ' liberados');
+      render();
+    };
+    wrap.appendChild(b);
+  }
+
+  return casca('Biblioteca',
+    vids.length + (vids.length === 1 ? ' vídeo · ' : ' vídeos · ') + humanSize(total),
+    [], wrap, null, () => go('/ajustes'));
+}
+
+function menuVideo(v, usos){
+  const ops = [
+    { i: '🏷', txt: 'Renomear', sub: v.nome || 'sem nome', fn: async () => {
+        const n = await pedirTexto({ titulo: 'Nome do vídeo', valor: v.nome,
+          sub: 'Vale pra todas as técnicas que usam este arquivo.', placeholder: 'Aula 12/03' });
+        if(!n) return;
+        v.nome = n; Store.upsertVideo(v); render();
+      } }
+  ];
+
+  if(usos.length){
+    ops.push({ sep: true });
+    usos.forEach(u => ops.push({
+      i: '🥋', txt: u.tecnica.nome,
+      sub: (u.clipe.in || u.clipe.out)
+        ? mmss(u.clipe.in || 0) + ' → ' + mmss(u.clipe.out > 0 ? u.clipe.out : (v.dur || 0))
+        : 'vídeo inteiro',
+      fn: () => go('/t/' + u.tecnica.id)
+    }));
+  }
+
+  ops.push({ sep: true });
+  ops.push({ i: '🗑', txt: 'Apagar o vídeo', cls: 'danger',
+    sub: usos.length ? usos.length + (usos.length === 1 ? ' clipe fica sem arquivo' : ' clipes ficam sem arquivo') : 'nada aponta pra ele',
+    fn: async () => {
+      const ok = await confirmar('Apagar ' + (v.nome || 'o vídeo') + '?',
+        (usos.length
+          ? usos.length + (usos.length === 1 ? ' clipe passa' : ' clipes passam') + ' a avisar que o arquivo sumiu, mas os recortes e as notas ficam. '
+          : '') + 'Libera ' + humanSize(v.size) + '. Não dá pra desfazer.',
+        'Apagar');
+      if(!ok) return;
+      await Store.deleteVideo(v.id);
+      ARQUIVOS.delete(v.id);
+      toast(humanSize(v.size) + ' liberados');
+      render();
+    } });
+
+  sheet({
+    titulo: v.nome || 'Vídeo',
+    sub: humanSize(v.size) + (v.dur ? ' · ' + mmss(v.dur) : '') +
+         (usos.length ? '' : '\nNenhuma técnica usa este vídeo.'),
+    opcoes: ops
+  });
 }
 
 /* =========================================================
@@ -521,8 +623,6 @@ function telaAjustes(){
   wrap.appendChild(troca('Tema escuro', 'melhor no dojo com pouca luz',
     () => st.theme === 'dark',
     v => { st.theme = v ? 'dark' : 'light'; aplicarTema(st.theme); }));
-  wrap.appendChild(troca('Mostrar o nome em japonês', 'os kanji ao lado do romaji',
-    ...bool('mostrarJp', () => setTimeout(render, 60))));
   wrap.appendChild(troca('Manter a tela acesa', 'enquanto um clipe está rodando',
     ...bool('keepAwake')));
 
@@ -554,6 +654,18 @@ function telaAjustes(){
     'Os vídeos só vão no .zip, que tem o tamanho real deles.</div>'));
 
   wrap.appendChild(el('<div class="secao">Armazenamento</div>'));
+
+  const vids = Store.videos();
+  const semUso = Store.videosSemUso().length;
+  const bBiblio = el('<div class="card"><div class="info"><b>Biblioteca de vídeos</b>' +
+    '<small>' + (vids.length ? vids.length + (vids.length === 1 ? ' vídeo' : ' vídeos') +
+      ' · ' + humanSize(vids.reduce((s, v) => s + (v.size || 0), 0)) +
+      (semUso ? ' · ' + semUso + ' sem uso' : '') : 'nenhum vídeo ainda') +
+    '</small></div><span class="dir">›</span></div>');
+  bBiblio.onclick = () => go('/videos');
+  wrap.appendChild(bBiblio);
+  wrap.appendChild(el('<div class="hint">Cada arquivo é guardado uma vez só, por mais técnicas que apontem pra ele.</div>'));
+
   const quotaBox = el('<div class="field"><label>Calculando...</label><div class="barra"><i style="width:0"></i></div></div>');
   wrap.appendChild(quotaBox);
   quota().then(q => {
@@ -608,9 +720,10 @@ function aplicarTema(t){
    ========================================================= */
 function pacote(){
   return {
-    app: 'judo', versao: 1,
+    app: 'judo', versao: 2,
     exportadoEm: new Date().toISOString(),
     tecnicas: Store.tecnicas(),
+    videos: Store.videos(),
     planos: Store.planos(),
     sessoes: Store.sessoes(),
     settings: Store.settings()
@@ -636,15 +749,14 @@ async function exportarZip(){
   const dados = pacote();
   const arquivos = [{ nome: 'judo.json', blob: new Blob([JSON.stringify(dados, null, 1)], { type: 'application/json' }) }];
 
+  /* percorre a biblioteca, não os clipes: um vídeo usado por dez
+     técnicas entra no .zip uma vez só */
   let bytes = 0;
-  for(const t of dados.tecnicas){
-    for(const c of (t.clipes || [])){
-      if(c.tipo !== 'file') continue;
-      const b = await Video_DB.get(c.id);
-      if(!b) continue;
-      arquivos.push({ nome: 'videos/' + c.id + '.' + extensao(c.mime, c.nome), blob: b });
-      bytes += b.size;
-    }
+  for(const v of dados.videos){
+    const b = await Video_DB.get(v.id);
+    if(!b) continue;
+    arquivos.push({ nome: 'videos/' + v.id + '.' + extensao(v.mime, v.nome), blob: b });
+    bytes += b.size;
   }
 
   if(arquivos.length === 1){
@@ -735,9 +847,14 @@ async function aplicarImport(dados, videos, substituir){
     };
 
     Store.saveTecnicas(juntar(substituir ? [] : Store.tecnicas(), dados.tecnicas));
+    Store.saveVideos(juntar(substituir ? [] : Store.videos(), dados.videos));
     Store.savePlanos(juntar(substituir ? [] : Store.planos(), dados.planos));
     Store.saveSessoes(juntar(substituir ? [] : Store.sessoes(), dados.sessoes));
     if(substituir && dados.settings) Store.saveSettings(dados.settings);
+
+    /* backup da versão 1 não tinha biblioteca: o blob estava gravado com a
+       chave do clipe, então a migração monta a biblioteca a partir dele */
+    migrar();
 
     s.fechar();
     aplicarTema(Store.settings().theme);
@@ -800,6 +917,7 @@ function registrarSW(){
    ========================================================= */
 (async function boot(){
   aplicarTema(Store.settings().theme);
+  migrar();
   try{ ARQUIVOS = new Set(await Video_DB.keys()); }catch(e){}
 
   document.getElementById('fileJson').addEventListener('change', e => {

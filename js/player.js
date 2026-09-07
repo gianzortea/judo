@@ -85,10 +85,10 @@ const Player = {
 
     /* ---------------- arquivo local ---------------- */
     if(clipe.tipo === 'file'){
-      const blob = await Video_DB.get(clipe.id);
+      const blob = await Video_DB.get(clipe.videoId || clipe.id);
       if(!blob){
-        box.innerHTML = '<div class="vfalta">O arquivo deste clipe não está neste aparelho.' +
-                        '<br><small>Importe um backup .zip ou anexe o vídeo de novo.</small></div>';
+        box.innerHTML = '<div class="vfalta">O vídeo deste clipe não está neste aparelho.' +
+                        '<br><small>Importe um backup .zip ou escolha outro vídeo.</small></div>';
         if(cb.onErro) cb.onErro('sem arquivo');
         return null;
       }
