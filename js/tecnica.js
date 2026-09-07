@@ -106,7 +106,7 @@ async function telaTecnica(id){
   }
 
   /* ---------- player ---------- */
-  const caixa = el('<div></div>');
+  const caixa = el('<div class="vwrap"></div>');
   raiz.appendChild(caixa);
 
   /* ---------- barra do tempo ---------- */

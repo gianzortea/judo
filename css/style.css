@@ -151,9 +151,26 @@ a{color:var(--acc); text-decoration:none}
 
 /* ============ visualizador da tecnica ============ */
 .viewer{position:fixed; inset:0; display:flex; flex-direction:column; background:var(--bg); z-index:30}
-.vscroll{flex:1; overflow:auto; -webkit-overflow-scrolling:touch}
+.vscroll{flex:1 1 auto; min-height:0; overflow:auto; -webkit-overflow-scrolling:touch}
 
-.vbox{background:#000; position:relative; width:100%; aspect-ratio:16/9; display:grid; place-items:center}
+/* A caixa do vídeo tinha só width:100% + aspect-ratio 16/9 e nenhum
+   limite de altura. Numa janela larga — ou num celular deitado — isso a
+   deixa mais alta que a tela inteira, e como flex não encolhe um item
+   com altura definida (min-height:auto), a barra de tempo, os controles
+   e as notas eram empurrados pra fora. Sobrava só o retângulo preto.
+   Medido: janela de 695px de altura, caixa de 864px.
+   O teto de altura vem acompanhado do teto de largura pra manter 16:9. */
+.vwrap{flex:0 0 auto; min-height:0}
+.vbox{
+  background:#000; position:relative; display:grid; place-items:center;
+  width:100%; aspect-ratio:16/9;
+  max-height:42vh; max-width:calc(42vh * 16 / 9);
+  margin:0 auto;
+}
+/* celular deitado: sobra pouquíssima altura, e os controles vêm antes */
+@media (max-height:520px){
+  .vbox{max-height:34vh; max-width:calc(34vh * 16 / 9)}
+}
 .vbox video{width:100%; height:100%; object-fit:contain; display:block; background:#000}
 .ytwrap{position:absolute; inset:0}
 .ytwrap iframe{width:100%; height:100%; border:0; display:block}
