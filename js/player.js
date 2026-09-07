@@ -226,7 +226,26 @@ const Player = {
       });
       v.addEventListener('play',  () => { if(cb.onTocando) cb.onTocando(true);  WakeLock.ligar(); });
       v.addEventListener('pause', () => { if(cb.onTocando) cb.onTocando(false); });
-      v.addEventListener('error', () => { if(cb.onErro) cb.onErro('não consegui abrir o vídeo'); });
+      v.addEventListener('error', () => {
+        const c = v.error ? v.error.code : 0;
+        falha('Não consegui abrir este vídeo.',
+              'O arquivo pode estar corrompido ou num formato que este navegador não decodifica. (erro ' + c + ')');
+        if(cb.onErro) cb.onErro('erro ' + c);
+      });
+
+      /* Um <video> pode ficar carregando pra sempre sem nunca disparar
+         'error': readyState fica em 0 e a tela mostra um retângulo preto
+         mudo. Em vez de deixar o usuário no escuro, avisa e diz o estado. */
+      const vigia = setTimeout(() => {
+        if(!vivo || v.readyState > 0) return;
+        falha('O vídeo não abriu.',
+              'Ficou carregando sem responder (readyState ' + v.readyState +
+              ', rede ' + v.networkState + '). Arquivo de ' + humanSize(blob.size) +
+              (blob.type ? ', ' + blob.type : '') + '.');
+        if(cb.onErro) cb.onErro('não ficou pronto');
+      }, 15000);
+      v.addEventListener('loadeddata', () => clearTimeout(vigia));
+
       raf = requestAnimationFrame(laco);
 
       return {
@@ -263,7 +282,7 @@ const Player = {
         setRate(r){ v.playbackRate = r; },
         setEspelho(on){ aplicaEspelho(v, on); },
         destruir(){
-          vivo = false; cancelAnimationFrame(raf);
+          vivo = false; cancelAnimationFrame(raf); clearTimeout(vigia);
           v.pause(); v.removeAttribute('src'); v.load();
           URL.revokeObjectURL(url);
           WakeLock.desligar();
