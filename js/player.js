@@ -220,6 +220,11 @@ const Player = {
       v.addEventListener('timeupdate', () => conferir(0.12));
 
       v.addEventListener('loadedmetadata', () => {
+        /* a caixa assume a proporção do arquivo: vídeo de celular na
+           vertical não fica mais espremido dentro de um 16:9 */
+        if(v.videoWidth > 0 && v.videoHeight > 0){
+          box.style.setProperty('--prop', (v.videoWidth / v.videoHeight).toFixed(4));
+        }
         if(clipe.in > 0) v.currentTime = clipe.in;
         v.playbackRate = clipe.rate || 1;
         if(cb.onPronto) cb.onPronto(v.duration || 0);

@@ -161,17 +161,25 @@ a{color:var(--acc); text-decoration:none}
    Medido: janela de 695px de altura, caixa de 864px.
    O teto de altura vem acompanhado do teto de largura pra manter 16:9. */
 .vwrap{flex:0 0 auto; min-height:0}
+/* --prop é a proporção largura/altura do vídeo; o player ajusta assim que
+   lê o arquivo. Sem isso, um vídeo vertical entrava numa caixa 16:9 e
+   ficava espremido entre duas tarjas pretas enormes. */
 .vbox{
-  background:#000; position:relative; display:grid; place-items:center;
-  width:100%; aspect-ratio:16/9;
-  max-height:42vh; max-width:calc(42vh * 16 / 9);
-  margin:0 auto;
+  --teto:42vh;
+  --prop:1.7778;
+  background:#000; position:relative;
+  display:flex; align-items:center; justify-content:center;
+  width:100%; aspect-ratio:var(--prop);
+  max-height:var(--teto); max-width:calc(var(--teto) * var(--prop));
+  margin:0 auto; overflow:hidden;
 }
 /* celular deitado: sobra pouquíssima altura, e os controles vêm antes */
 @media (max-height:520px){
-  .vbox{max-height:34vh; max-width:calc(34vh * 16 / 9)}
+  .vbox{--teto:34vh}
 }
-.vbox video{width:100%; height:100%; object-fit:contain; display:block; background:#000}
+/* absoluto: preso aos quatro lados da caixa, o height:100% sempre resolve.
+   Solto no fluxo ele assumia a altura natural do arquivo e vazava. */
+.vbox video{position:absolute; inset:0; width:100%; height:100%; object-fit:contain; display:block; background:#000}
 .ytwrap{position:absolute; inset:0}
 .ytwrap iframe{width:100%; height:100%; border:0; display:block}
 .vfalta{color:#c9cfdb; text-align:center; font-size:13.5px; padding:22px; line-height:1.6}
